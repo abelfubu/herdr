@@ -337,6 +337,30 @@ pub enum CellColor {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum UnderlineStyle {
+    #[default]
+    None,
+    Single,
+    Double,
+    Curly,
+    Dotted,
+    Dashed,
+}
+
+impl From<u32> for UnderlineStyle {
+    fn from(value: u32) -> Self {
+        match value {
+            1 => Self::Single,
+            2 => Self::Double,
+            3 => Self::Curly,
+            4 => Self::Dotted,
+            5 => Self::Dashed,
+            _ => Self::None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct CellStyle {
     pub fg_color: Option<CellColor>,
     pub bg_color: Option<CellColor>,
@@ -350,6 +374,7 @@ pub struct CellStyle {
     pub strikethrough: bool,
     pub overline: bool,
     pub underlined: bool,
+    pub underline_style: UnderlineStyle,
 }
 
 impl From<ffi::GhosttyStyle> for CellStyle {
@@ -367,6 +392,7 @@ impl From<ffi::GhosttyStyle> for CellStyle {
             strikethrough: value.strikethrough,
             overline: value.overline,
             underlined: value.underline != 0,
+            underline_style: UnderlineStyle::from(value.underline as u32),
         }
     }
 }

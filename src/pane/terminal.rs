@@ -1229,9 +1229,10 @@ impl GhosttyPaneTerminal {
                             symbol_scratch.as_str()
                         }
                     };
+                    let symbol = wrap_symbol_with_underline_style(symbol, basic.style.underline_style);
                     let cell = &mut buf[(area.x + x, area.y + y)];
                     cell.reset();
-                    cell.set_symbol(symbol);
+                    cell.set_symbol(&symbol);
                     cell.set_style(style);
                     x += 1;
                 }
@@ -1817,13 +1818,40 @@ fn ghostty_cell_style(
     if basic.style.blink {
         modifiers |= Modifier::SLOW_BLINK;
     }
-    if basic.style.underlined {
+    // Only set the generic UNDERLINED modifier for plain single underline.
+    // Non-standard underline styles (curly, dotted, dashed, double) are
+    // rendered by embedding escape sequences in the cell symbol, because
+    // ratatui's Modifier enum only knows about a single underline bit.
+    if basic.style.underlined && basic.style.underline_style == crate::ghostty::UnderlineStyle::Single {
         modifiers |= Modifier::UNDERLINED;
     }
     if basic.style.strikethrough {
         modifiers |= Modifier::CROSSED_OUT;
     }
     style.add_modifier(modifiers)
+}
+
+/// Wrap a cell symbol with SGR escape sequences for non-standard underline
+/// styles (curly, dotted, dashed, double).  Ratatui's `Modifier::UNDERLINED`
+/// only maps to a single plain underline, so we bypass it by embedding the
+/// exact escape sequence in the symbol string.  A trailing `\x1b[24m` resets
+/// the underline style so that it does not leak into neighbouring cells.
+fn wrap_symbol_with_underline_style(
+    symbol: &str,
+    style: crate::ghostty::UnderlineStyle,
+) -> String {
+    let (prefix, suffix): (&str, &str) = match style {
+        crate::ghostty::UnderlineStyle::Curly => ("\x1b[4:3m", "\x1b[24m"),
+        crate::ghostty::UnderlineStyle::Double => ("\x1b[4:2m", "\x1b[24m"),
+        crate::ghostty::UnderlineStyle::Dotted => ("\x1b[4:4m", "\x1b[24m"),
+        crate::ghostty::UnderlineStyle::Dashed => ("\x1b[4:5m", "\x1b[24m"),
+        _ => return symbol.to_owned(),
+    };
+    let mut out = String::with_capacity(prefix.len() + symbol.len() + suffix.len());
+    out.push_str(prefix);
+    out.push_str(symbol);
+    out.push_str(suffix);
+    out
 }
 
 #[derive(Debug)]
@@ -3234,7 +3262,7 @@ mod tests {
         let pane_id = PaneId::from_raw(1);
 
         let result =
-            pane.process_pty_bytes(pane_id, 0, b"\x1bP+q6E6F7065;536D756C78;4D7\x1b\\", &tx);
+            pane.process_pty_bytes(pane_id, 0, b"\x1bP+q6E6F7065;4D7\x1b\\", &tx);
 
         assert!(result.terminal_responses.is_empty());
         assert!(rx.try_recv().is_err());
