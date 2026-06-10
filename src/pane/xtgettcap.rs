@@ -174,8 +174,7 @@ fn xtgettcap_response(cap_hex: &[u8]) -> Option<Bytes> {
 }
 
 fn xtgettcap_value(cap_hex: &[u8]) -> Option<Option<&'static [u8]>> {
-    // Mirror only the Ghostty terminfo capabilities that this pane path can
-    // stand behind. Smulx is intentionally absent until underline shapes render.
+    // Mirror Ghostty terminfo capabilities that this pane path can stand behind.
     match cap_hex {
         b"5463" => Some(None),
         b"524742" => Some(Some(b"8")),
@@ -186,6 +185,8 @@ fn xtgettcap_value(cap_hex: &[u8]) -> Option<Option<&'static [u8]>> {
         b"536574756C63" => Some(Some(
             b"\\E[58:2::%p1%{65536}%/%d:%p1%{256}%/%{255}%&%d:%p1%{255}%&%d%;m",
         )),
+        // Smulx — set underline style (curly, dotted, dashed, etc.)
+        b"536D756C78" => Some(Some(b"\\E[4:%p1%dm")),
         _ => None,
     }
 }
@@ -252,10 +253,24 @@ mod tests {
     }
 
     #[test]
+    fn tracker_returns_smulx_capability() {
+        let mut tracker = XtgettcapQueryTracker::default();
+
+        tracker.observe(b"\x1bP+q536D756C78\x1b\\");
+
+        assert_eq!(
+            response_bytes(tracker.drain_pending()),
+            vec![Bytes::from_static(
+                b"\x1bP1+r536D756C78=5C455B343A25703125646D\x1b\\"
+            )]
+        );
+    }
+
+    #[test]
     fn tracker_ignores_unsupported_capabilities() {
         let mut tracker = XtgettcapQueryTracker::default();
 
-        tracker.observe(b"\x1bP+q536D756C78;6E6F7065\x1b\\");
+        tracker.observe(b"\x1bP+q6E6F7065\x1b\\");
 
         assert!(response_bytes(tracker.drain_pending()).is_empty());
     }
